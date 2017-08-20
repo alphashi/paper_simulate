@@ -16,10 +16,12 @@ def nin(inputs, reuse=False):
         weights_initializer = None
         const_init = None
         _reuse = True
+        is_train = False
     else:
         weights_initializer = tf.truncated_normal_initializer(0.0, 0.01)
         const_init = tf.truncated_normal_initializer(mean=const_value, stddev=0.1)
         _reuse = None
+        is_train = True
 
 
     with slim.arg_scope([slim.conv2d],
@@ -29,20 +31,19 @@ def nin(inputs, reuse=False):
                         # reuse=True,
                         weights_initializer=weights_initializer):
 
-        # const_value = 0.0
-        # const_init = tf.constant_initializer(const_value)
-        # const_init = tf.truncated_normal_initializer(mean=const_value, stddev=0.05)
         # layer 1
         net0 = slim.conv2d(inputs, num_outputs=192, kernel_size=[5, 5], stride=1, scope="conv1")
         net1 = slim.conv2d(net0, num_outputs=169, kernel_size=[1, 1], weights_initializer=const_init, scope="cccp1")
         net2 = slim.conv2d(net1, num_outputs=96, kernel_size=[1, 1], weights_initializer=const_init, scope="cccp2")
         net = slim.max_pool2d(net2, kernel_size=[3, 3], stride=2, scope="pool1")
+        net = slim.dropout(net, keep_prob=0.5, is_training=is_train, scope="dropout1");
 
         # layer 2
         net = slim.conv2d(net, num_outputs=192, kernel_size=[5, 5], stride =1, scope="conv2")
         net = slim.conv2d(net, num_outputs=192, kernel_size=[1, 1], weights_initializer=const_init, scope="cccp3")
         net = slim.conv2d(net, num_outputs=192, kernel_size=[1, 1], weights_initializer=const_init, scope="cccp4")
         net = slim.max_pool2d(net, kernel_size=[3, 3], stride=1, scope="pool2")
+        net = slim.dropout(net, keep_prob=0.5, is_training=is_train, scope="dropout2");
 
         # layer 3
         net = slim.conv2d(net, num_outputs=192, kernel_size=[5, 5], stride=1, scope="conv3")
@@ -165,6 +166,7 @@ if __name__ == "__main__":
                 return tf.train.SessionRunArgs([total_loss, predictions, accur, labels, learning_rate])  # Asks for loss value.
 
             def after_run(self, run_context, run_values):
+                # print info 
                 if self._step % log_frequency == 0:
                     current_time = time.time()
                     duration = current_time - self._start_time
@@ -176,34 +178,18 @@ if __name__ == "__main__":
                     label_value = run_values.results[3]
                     learning_rate_value = run_values.results[4]
 
-                    # net0_value = run_values.results[1]
-                    # net1_value = run_values.results[2]
 
-                    # max_index = np.argmax(pred_value, axis=1)
-                    # accu_value = np.sum(max_index == label_value) / batch_size
                     format_str = ("\n==========================================================\n"
                                   "%s: step %5d, loss = %.2f, accuracy = %.2f, learning_rate_value = %.4f, cost_time = %.2f")
                     print (format_str % (datetime.now(), self._step, loss_value, accuracy_value, learning_rate_value, duration))
 
                 if self._step > 4000 and self._step % (log_frequency*10) == 0:
                     evaluate(self._session, infer_accur, num_examples, batch_size)
-                    # evaluate(infer_accur, num_examples, batch_size)
-                    # format_str = ("\n==========================================================\n"
-                    #               "%s: step %5d, loss = %.2f, accuracy = %.2f == %.2f, cost_time = %.2f")
-                    # print (format_str % (datetime.now(), self._step, loss_value, accu_value, accuracy_value, duration))
-                    #
-                    # examples_per_sec = log_frequency * batch_size / duration
-                    # sec_per_batch = float(duration / log_frequency)
-                    #
-                    # format_str = ('%s: step %d, loss = %.2f (%.1f examples/sec; %.3f '
-                    #               'sec/batch)')
-                    # print (format_str % (datetime.now(), self._step, loss_value,
-                    #                      examples_per_sec, sec_per_batch))
 
+        # training step
         tf.contrib.training.train(
                     train_tensor
                     , train_log_dir
-                    # , input_fn=train_step_fn
                     , save_checkpoint_secs = 600
                     , save_summaries_steps = 100
                     # , hooks=[tf.train.StopAtStepHook(last_step=1000),
@@ -211,4 +197,3 @@ if __name__ == "__main__":
                     , hooks=[_LoggerHook()]
                     )
 
-          # tf.train.SessionRunHook()
